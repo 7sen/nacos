@@ -48,7 +48,12 @@ public class DynamicDataSource {
                 }
                 return localDataSourceService;
             }
-            return null;
+            
+            if (basicDataSourceService == null) {
+                basicDataSourceService = new ExternalDataSourceServiceImpl();
+                basicDataSourceService.init();
+            }
+            return basicDataSourceService;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

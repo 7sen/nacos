@@ -19,6 +19,7 @@ package com.alibaba.nacos.config.server.service.repository.extrnal;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.common.utils.MD5Utils;
 import com.alibaba.nacos.config.server.configuration.ConditionOnExternalStorage;
+import com.alibaba.nacos.config.server.configuration.datasource.DataSourceType;
 import com.alibaba.nacos.config.server.constant.Constants;
 import com.alibaba.nacos.config.server.enums.FileTypeEnum;
 import com.alibaba.nacos.config.server.model.ConfigAdvanceInfo;
@@ -73,10 +74,13 @@ import com.alibaba.nacos.config.server.modules.repository.ConfigInfoTagRepositor
 import com.alibaba.nacos.config.server.modules.repository.ConfigTagsRelationRepository;
 import com.alibaba.nacos.config.server.modules.repository.HisConfigInfoRepository;
 import com.alibaba.nacos.config.server.modules.repository.TenantInfoRepository;
+import com.alibaba.nacos.config.server.service.datasource.DataSourceService;
+import com.alibaba.nacos.config.server.service.datasource.DynamicDataSource;
 import com.alibaba.nacos.config.server.service.repository.PaginationHelper;
 import com.alibaba.nacos.config.server.service.repository.PersistService;
 import com.alibaba.nacos.config.server.utils.LogUtil;
 import com.alibaba.nacos.config.server.utils.ParamUtils;
+import com.alibaba.nacos.sys.env.EnvUtil;
 import com.google.common.base.Joiner;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.dsl.BooleanExpression;
@@ -93,6 +97,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.TransactionStatus;
@@ -101,6 +106,7 @@ import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.Assert;
 
+import javax.annotation.PostConstruct;
 import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Predicate;
@@ -126,6 +132,8 @@ import java.util.stream.Collectors;
 @Component
 public class ExternalStoragePersistServiceImpl implements PersistService {
     
+    private DataSourceService dataSourceService;
+    
     @Autowired
     private ConfigInfoRepository configInfoRepository;
     
@@ -150,14 +158,31 @@ public class ExternalStoragePersistServiceImpl implements PersistService {
     @Autowired
     private TransactionTemplate tjt;
     
+    protected JdbcTemplate jt;
+    
+    private static final String PLATFORM_TYPE = "spring.datasource.platform";
+    
     /**
      * constant variables.
      */
     public static final String SPOT = ".";
     
+    @PostConstruct
+    public void init() {
+        dataSourceService = DynamicDataSource.getInstance().getDataSource();
+        jt = getJdbcTemplate();
+    }
+    
+    public JdbcTemplate getJdbcTemplate() {
+        return this.dataSourceService.getJdbcTemplate();
+    }
+    
     @Override
     public <E> PaginationHelper<E> createPaginationHelper() {
-        return null;
+        if (DataSourceType.POSTGRESQL.matches(EnvUtil.getProperty(PLATFORM_TYPE))) {
+            return new ExternalPostGreSqlStoragePaginationHelperImpl<E>(jt);
+        }
+        return new ExternalStoragePaginationHelperImpl<E>(jt);
     }
     
     // ----------------------- config_info table insert update delete
